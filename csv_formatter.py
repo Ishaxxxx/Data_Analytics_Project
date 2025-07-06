@@ -1,7 +1,3 @@
-# ================================
-# CSV Formatter with Pivot Table & VLOOKUP (Optimized Version)
-# ================================
-
 import pandas as pd
 import tkinter as tk
 from tkinter import filedialog, simpledialog
@@ -20,9 +16,6 @@ from typing import Optional, Tuple
 
 init(autoreset=True)
 
-# ============================
-# Global Constants
-# ============================
 
 BLUE_HEADER = "0070C0"
 PINK_SLA = "FFC7CE"
@@ -30,11 +23,8 @@ FALLBACK_REMARKS = [
     "visit pending", "customer not present", "call closed by 4 pm",
     "part pending", "custom remarks"
 ]
-COLUMN_WIDTHS = [18, 8, 22, 50, 15, 20, 35, 20, 22, 30]  # Predefined column widths
+COLUMN_WIDTHS = [18, 8, 22, 50, 15, 20, 35, 20, 22, 30, 30]  # Added one more column for Remarks
 
-# ============================
-# Logging Function
-# ============================
 
 def log(message: str, level: str = "info") -> None:
     """Enhanced logging function with colors and timestamps."""
@@ -49,9 +39,6 @@ def log(message: str, level: str = "info") -> None:
     color = levels.get(level, Fore.WHITE)
     print(f"{Fore.WHITE}[{timestamp}] {color}[{level.upper()}] {Style.RESET_ALL}{message}")
 
-# ============================
-# File Selection Functions
-# ============================
 
 def create_tk_root() -> tk.Tk:
     """Create and configure a Tk root window."""
@@ -90,9 +77,6 @@ def select_lookup_file() -> Optional[str]:
         [("Excel Files", "*.xlsx"), ("Excel Files", "*.xls")]
     )
 
-# ============================
-# VLOOKUP Application
-# ============================
 
 def read_lookup_file(lookup_path: str) -> Optional[pd.DataFrame]:
     """Read the lookup Excel file with multiple engine fallbacks."""
@@ -121,30 +105,23 @@ def apply_vlookup(df: pd.DataFrame, lookup_path: str) -> pd.DataFrame:
     """Apply VLOOKUP functionality to merge data from lookup file."""
     log("Starting VLOOKUP process...", "step")
     
-    # Read lookup file
     lookup_df = read_lookup_file(lookup_path)
     if lookup_df is None:
         return df
     
-    # Show available columns for debugging
     log(f"Lookup file columns: {list(lookup_df.columns)}", "debug")
     
-    # Determine key and value columns
     key_column, value_column = determine_lookup_columns(df, lookup_df)
     if not key_column or not value_column:
         return df
     
-    # Clean key columns for matching
     df = clean_key_column(df, key_column)
     lookup_df = clean_key_column(lookup_df, key_column)
     
-    # Show sample data for verification
     log_sample_data(df, lookup_df, key_column)
     
-    # Perform the merge
     merged = perform_merge(df, lookup_df, key_column, value_column)
     
-    # Process merge results
     if merged is not None:
         df = process_merge_results(merged, value_column)
     
@@ -155,7 +132,6 @@ def determine_lookup_columns(df: pd.DataFrame, lookup_df: pd.DataFrame) -> Tuple
     default_key = "Case Number"
     default_value = "Remarks"
     
-    # Key column selection
     if default_key not in lookup_df.columns:
         key_column = prompt_user_column(
             "Enter the COMMON KEY COLUMN (like Case Number):",
@@ -166,12 +142,10 @@ def determine_lookup_columns(df: pd.DataFrame, lookup_df: pd.DataFrame) -> Tuple
     else:
         key_column = default_key
     
-    # Validate key column exists in main DF
     if key_column not in df.columns:
         log(f"Key column '{key_column}' not found in main CSV", "error")
         return "", ""
     
-    # Value column selection
     if default_value not in lookup_df.columns:
         value_column = prompt_user_column(
             "Enter the LOOKUP RETURN COLUMN (like Remarks):",
@@ -206,7 +180,6 @@ def log_sample_data(df: pd.DataFrame, lookup_df: pd.DataFrame, key_column: str) 
     log(f"Sample CSV data - {key_column}: {df[key_column].head(3).tolist()}", "debug")
     log(f"Sample lookup data - {key_column}: {lookup_df[key_column].head(3).tolist()}", "debug")
     
-    # Check for potential matches
     common_cases = set(df[key_column]).intersection(set(lookup_df[key_column]))
     log(f"Common cases found: {len(common_cases)}", "info")
     if common_cases:
@@ -229,42 +202,35 @@ def perform_merge(df: pd.DataFrame, lookup_df: pd.DataFrame,
 
 def process_merge_results(merged: pd.DataFrame, value_column: str) -> pd.DataFrame:
     """Process the results of the merge operation."""
-    # Handle the case where merge created _x and _y columns
+    
     original_remarks_col = 'Remarks_x' if 'Remarks_x' in merged.columns else 'Remarks'
     lookup_remarks_col = 'Remarks_y' if 'Remarks_y' in merged.columns else value_column
     
-    # Clean the lookup results
+    
     if lookup_remarks_col in merged.columns:
         merged[lookup_remarks_col] = merged[lookup_remarks_col].fillna('')
     
-    # Create the final Remarks column
     merged['Remarks'] = ''
     
-    # Track statistics
     vlookup_overwrites = 0
     original_kept = 0
     
-    # Process each row
     for idx, row in merged.iterrows():
-        # Get lookup result
+        
         vlookup_result = ''
         if lookup_remarks_col in merged.columns:
             vlookup_result = str(row[lookup_remarks_col]).strip()
         
-        # Get original remark
-        original_remark = ''
-        if original_remarks_col in merged.columns:
-            original_remark = str(row[original_remarks_col]).strip()
-        
-        # Use VLOOKUP result if available, otherwise use original
+        # Only populate the Remarks column if we have valid VLOOKUP data
+        # Don't use original_remark since the Remarks column should only have VLOOKUP data
         if vlookup_result and vlookup_result.lower() not in ['nan', '', 'none']:
             merged.at[idx, 'Remarks'] = vlookup_result
             vlookup_overwrites += 1
         else:
-            merged.at[idx, 'Remarks'] = original_remark
+            # Keep the Remarks column empty if no VLOOKUP data
+            merged.at[idx, 'Remarks'] = ''
             original_kept += 1
     
-    # Clean up temporary columns
     cols_to_drop = []
     if 'Remarks_x' in merged.columns:
         cols_to_drop.append('Remarks_x')
@@ -276,14 +242,10 @@ def process_merge_results(merged: pd.DataFrame, value_column: str) -> pd.DataFra
     if cols_to_drop:
         merged = merged.drop(cols_to_drop, axis=1)
     
-    # Log statistics
-    log(f"VLOOKUP Results: {vlookup_overwrites} overwrites, {original_kept} originals kept", "success")
+    log(f"VLOOKUP Results: {vlookup_overwrites} rows populated with lookup data, {original_kept} rows left empty", "success")
     
     return merged
 
-# ============================
-# CSV Processing
-# ============================
 
 def read_csv_with_fallback(csv_path: str) -> Optional[pd.DataFrame]:
     """Read CSV with encoding fallback."""
@@ -302,66 +264,51 @@ def process_csv(csv_path: str, output_path: str,
     """Main CSV processing function."""
     log("Starting CSV processing...", "step")
     
-    # Read CSV
     df = read_csv_with_fallback(csv_path)
     if df is None:
         return False
     
-    # Process data
     df = prepare_dataframe(df)
     
-    # Apply VLOOKUP if requested
     if do_vlookup and lookup_path:
         df = apply_vlookup(df, lookup_path)
     
-    # Save to Excel
     if not save_to_excel(df, output_path):
         return False
     
-    # Create pivot table
     create_pivot_table(output_path)
     
     return True
 
 def prepare_dataframe(df: pd.DataFrame) -> pd.DataFrame:
     """Prepare and clean the dataframe."""
-    # Convert dates and calculate SLA
     df['Created Date'] = pd.to_datetime(df['Created Date'], dayfirst=True, errors='coerce')
     df['SLA'] = (datetime.now() - df['Created Date']).dt.days.fillna(0).astype(int)
-    df['LineItem Status'] = df['LineItem Status'].fillna('New').astype(str)
+
+    if 'LineItem Status' not in df.columns:
+        df['LineItem Status'] = 'New'
+    else:
+        df['LineItem Status'] = df['LineItem Status'].fillna('New').astype(str)
     
-    # Select and order columns
+    # Select and order columns - keep Technician Remarks as it is
     selected_columns = [
         'Case Number', 'SLA', 'Customer Name', 'Street',
         'Zip/Postal Code', 'Customer Complaint', 'Product Description',
         'LineItem Status', 'Technician Name'
     ]
     
-    # Handle remarks column - check for both possible names
-    remarks_col = None
-    for col in ['Technician Remarks', 'Remarks']:
-        if col in df.columns:
-            remarks_col = col
-            break
+    # Add Technician Remarks if it exists (keep original column)
+    if 'Technician Remarks' in df.columns:
+        selected_columns.append('Technician Remarks')
+        log("Keeping Technician Remarks column as it is", "success")
     
-    if remarks_col:
-        df['Remarks'] = df[remarks_col].fillna('').astype(str)
-        if remarks_col != 'Remarks':
-            df = df.drop(remarks_col, axis=1)
-        log(f"Using {remarks_col} as Remarks column", "success")
-    else:
-        df['Remarks'] = [random.choice(FALLBACK_REMARKS) for _ in range(len(df))]
-        log("No remarks column found - using fallback remarks", "info")
-    
-    # Add 'Remarks' to selected columns if not already there
-    if 'Remarks' not in selected_columns:
-        selected_columns.append('Remarks')
+    # Always add a new empty Remarks column (separate from Technician Remarks)
+    df['Remarks'] = ''  # Start with empty column
+    selected_columns.append('Remarks')
+    log("Added new empty Remarks column for VLOOKUP results", "success")
     
     return df[selected_columns]
 
-# ============================
-# Excel Export
-# ============================
 
 def save_to_excel(df: pd.DataFrame, excel_path: str) -> bool:
     """Save dataframe to Excel with formatting."""
@@ -371,14 +318,11 @@ def save_to_excel(df: pd.DataFrame, excel_path: str) -> bool:
         ws = wb.active
         ws.title = "Sheet1"
         
-        # Write data efficiently
         for row in dataframe_to_rows(df, index=False, header=True):
             ws.append(row)
         
-        # Apply styling
         apply_excel_styling(ws, df)
         
-        # Save the file
         wb.save(excel_path)
         log(f"Excel file saved to {excel_path}", "success")
         return True
@@ -387,8 +331,7 @@ def save_to_excel(df: pd.DataFrame, excel_path: str) -> bool:
         return False
 
 def apply_excel_styling(ws, df: pd.DataFrame) -> None:
-    """Apply consistent styling to Excel worksheet."""
-    # Styles
+
     header_fill = PatternFill(start_color=BLUE_HEADER, end_color=BLUE_HEADER, fill_type="solid")
     header_font = Font(bold=True, color="FFFFFF")
     border = Border(
@@ -400,40 +343,31 @@ def apply_excel_styling(ws, df: pd.DataFrame) -> None:
     align = Alignment(horizontal='center', vertical='center', wrap_text=True)
     pink_fill = PatternFill(start_color=PINK_SLA, end_color=PINK_SLA, fill_type="solid")
     
-    # Apply header styling
     for cell in ws[1]:
         cell.fill = header_fill
         cell.font = header_font
         cell.border = border
         cell.alignment = align
     
-    # Apply SLA column styling
     for row in ws.iter_rows(min_row=2, min_col=2, max_col=2):
         for cell in row:
             cell.fill = pink_fill
     
-    # Apply general cell styling
     for row in ws.iter_rows(min_row=2):
         for cell in row:
             cell.border = border
             cell.alignment = align
     
-    # Set column widths
     for i, width in enumerate(COLUMN_WIDTHS, 1):
         ws.column_dimensions[chr(64 + i)].width = width
     
-    # Add autofilter
     ws.auto_filter.ref = ws.dimensions
 
-# ============================
-# Pivot Table
-# ============================
 
 def create_pivot_table(excel_path: str) -> None:
     """Create pivot table in the Excel file."""
     log("Attempting to create pivot table...", "step")
     
-    # Kill any existing Excel processes
     kill_excel_processes()
     
     excel = None
@@ -444,34 +378,29 @@ def create_pivot_table(excel_path: str) -> None:
         if not excel:
             return
         
-        # Open the workbook
         abs_path = os.path.abspath(excel_path)
         wb = excel.Workbooks.Open(abs_path)
         ws = wb.Sheets("Sheet1")
         
-        # Define data range
-        last_row = ws.UsedRange.Rows.Count
-        data_range = ws.Range(f"A1:J{last_row}")  # Updated to J since we removed phone column
+        apply_default_sheet_settings(ws)
         
-        # Create pivot sheet
+        last_row = ws.UsedRange.Rows.Count
+        data_range = ws.Range(f"A1:K{last_row}")  # Updated to K since we now have 11 columns
+        
         ws_pivot = wb.Sheets.Add()
         ws_pivot.Name = "Pivot_View"
         
-        # Create pivot cache and table
-        pivot_cache = wb.PivotCaches().Create(1, data_range)  # 1 = xlDatabase
+        pivot_cache = wb.PivotCaches().Create(1, data_range) 
         pivot_table = pivot_cache.CreatePivotTable(ws_pivot.Range("B4"), "SLA_Pivot")
         
-        # Configure pivot fields
         configure_pivot_fields(pivot_table)
         
-        # Save and close
         wb.Save()
         log("Pivot table created successfully", "success")
         
     except Exception as e:
         log(f"Error creating pivot table: {str(e)}", "error")
     finally:
-        # Clean up
         if wb:
             try:
                 wb.Close(True)
@@ -514,43 +443,80 @@ def initialize_excel_application():
 def configure_pivot_fields(pivot_table) -> None:
     """Configure pivot table fields and layout."""
     try:
-        # Row field: Technician Name
         pf_row = pivot_table.PivotFields("Technician Name")
-        pf_row.Orientation = 1  # xlRowField
+        pf_row.Orientation = 1 
         
-        # Column field: SLA
         pf_col = pivot_table.PivotFields("SLA")
-        pf_col.Orientation = 2  # xlColumnField
+        pf_col.Orientation = 2  
         
-        # Filter: LineItem Status
         pf_filter = pivot_table.PivotFields("LineItem Status")
-        pf_filter.Orientation = 3  # xlPageField
+        pf_filter.Orientation = 3  
         
-        # Set default filter to "New"
         try:
             pf_filter.CurrentPage = "New"
         except:
             log("Could not set default filter to 'New'", "warning")
         
-        # Values: Count of Case Number
         data_field = pivot_table.AddDataField(
             pivot_table.PivotFields("Case Number"), 
             "Count of Case Number", 
-            -4112  # xlCount
+            -4112 
         )
         
-        # Sort descending by count
         try:
-            pf_row.AutoSort(2, "Count of Case Number")  # 2 = xlDescending
+            pf_row.AutoSort(2, "Count of Case Number") 
         except:
             log("Could not apply auto-sort to pivot table", "warning")
             
     except Exception as e:
         log(f"Error configuring pivot fields: {str(e)}", "error")
 
-# ============================
-# Main Function
-# ============================
+def apply_default_sheet_settings(ws) -> None:
+    """Apply default sorting and filtering to the main data sheet while keeping all filter options available."""
+    try:
+        last_row = ws.UsedRange.Rows.Count
+        last_col = ws.UsedRange.Columns.Count
+        data_range = ws.Range(ws.Cells(1, 1), ws.Cells(last_row, last_col))
+        
+        data_range.AutoFilter(Field=1)  
+        
+        headers = [str(ws.Cells(1, col).Value).strip() for col in range(1, last_col+1)]
+        try:
+            sla_col = headers.index("SLA") + 1
+        except ValueError:
+            sla_col = None
+            
+        try:
+            lineitem_col = headers.index("LineItem Status") + 1
+        except ValueError:
+            lineitem_col = None
+        
+        if sla_col:
+            ws.Sort.SortFields.Clear()
+            ws.Sort.SortFields.Add(
+                Key=ws.Cells(1, sla_col),
+                SortOn=0,  
+                Order=2    
+            )
+            ws.Sort.SetRange(data_range)
+            ws.Sort.Header = 1  
+            ws.Sort.Apply()
+            log("Applied default SLA sorting (descending)", "success")
+        
+        if lineitem_col:
+            data_range.AutoFilter(
+                Field=lineitem_col,
+                Criteria1="New"
+            )
+            log("Applied default LineItem Status filter (New)", "success")
+        
+    except Exception as e:
+        log(f"Error applying sheet settings: {str(e)}", "error")
+        try:
+            ws.UsedRange.AutoFilter()
+        except:
+            pass
+
 
 def main() -> None:
     """Main entry point for the script."""
@@ -559,7 +525,6 @@ def main() -> None:
     print(Fore.GREEN + "===============================\n")
     
     try:
-        # File selection
         csv_path = select_csv_file()
         if not csv_path:
             log("No CSV file selected. Exiting...", "error")
@@ -570,12 +535,10 @@ def main() -> None:
             log("No output folder selected. Exiting...", "error")
             return
         
-        # Prepare output path
         timestamp = datetime.now().strftime('%Y%m%d_%H%M%S')
         filename = f"Output_{timestamp}.xlsx"
         excel_path = os.path.join(output_folder, filename)
         
-        # VLOOKUP option
         do_vlookup = input("Apply VLOOKUP? (Y/N): ").strip().lower() == 'y'
         lookup_file = select_lookup_file() if do_vlookup else None
         
@@ -583,7 +546,6 @@ def main() -> None:
             log("No lookup file selected. Skipping VLOOKUP...", "warning")
             do_vlookup = False
         
-        # Process the file
         if process_csv(csv_path, excel_path, do_vlookup, lookup_file):
             try:
                 os.startfile(excel_path)
