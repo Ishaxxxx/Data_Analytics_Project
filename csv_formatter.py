@@ -1,6 +1,6 @@
 import pandas as pd
 import tkinter as tk
-from tkinter import filedialog, simpledialog
+from tkinter import filedialog, ttk, messagebox, simpledialog
 from openpyxl import Workbook
 from openpyxl.styles import PatternFill, Font, Border, Side, Alignment
 from openpyxl.utils.dataframe import dataframe_to_rows
@@ -16,15 +16,13 @@ from typing import Optional, Tuple
 
 init(autoreset=True)
 
-
 BLUE_HEADER = "0070C0"
 PINK_SLA = "FFC7CE"
 FALLBACK_REMARKS = [
     "visit pending", "customer not present", "call closed by 4 pm",
     "part pending", "custom remarks"
 ]
-COLUMN_WIDTHS = [18, 8, 22, 50, 15, 20, 35, 20, 22, 30, 30]  # Added one more column for Remarks
-
+COLUMN_WIDTHS = [18, 8, 22, 50, 15, 20, 35, 20, 15, 30, 30]
 
 def log(message: str, level: str = "info") -> None:
     """Enhanced logging function with colors and timestamps."""
@@ -38,7 +36,6 @@ def log(message: str, level: str = "info") -> None:
     }
     color = levels.get(level, Fore.WHITE)
     print(f"{Fore.WHITE}[{timestamp}] {color}[{level.upper()}] {Style.RESET_ALL}{message}")
-
 
 def create_tk_root() -> tk.Tk:
     """Create and configure a Tk root window."""
@@ -76,7 +73,6 @@ def select_lookup_file() -> Optional[str]:
         "Select Lookup Excel File",
         [("Excel Files", "*.xlsx"), ("Excel Files", "*.xls")]
     )
-
 
 def read_lookup_file(lookup_path: str) -> Optional[pd.DataFrame]:
     """Read the lookup Excel file with multiple engine fallbacks."""
@@ -206,7 +202,6 @@ def process_merge_results(merged: pd.DataFrame, value_column: str) -> pd.DataFra
     original_remarks_col = 'Remarks_x' if 'Remarks_x' in merged.columns else 'Remarks'
     lookup_remarks_col = 'Remarks_y' if 'Remarks_y' in merged.columns else value_column
     
-    
     if lookup_remarks_col in merged.columns:
         merged[lookup_remarks_col] = merged[lookup_remarks_col].fillna('')
     
@@ -216,18 +211,14 @@ def process_merge_results(merged: pd.DataFrame, value_column: str) -> pd.DataFra
     original_kept = 0
     
     for idx, row in merged.iterrows():
-        
         vlookup_result = ''
         if lookup_remarks_col in merged.columns:
             vlookup_result = str(row[lookup_remarks_col]).strip()
         
-        # Only populate the Remarks column if we have valid VLOOKUP data
-        # Don't use original_remark since the Remarks column should only have VLOOKUP data
         if vlookup_result and vlookup_result.lower() not in ['nan', '', 'none']:
             merged.at[idx, 'Remarks'] = vlookup_result
             vlookup_overwrites += 1
         else:
-            # Keep the Remarks column empty if no VLOOKUP data
             merged.at[idx, 'Remarks'] = ''
             original_kept += 1
     
@@ -245,7 +236,6 @@ def process_merge_results(merged: pd.DataFrame, value_column: str) -> pd.DataFra
     log(f"VLOOKUP Results: {vlookup_overwrites} rows populated with lookup data, {original_kept} rows left empty", "success")
     
     return merged
-
 
 def read_csv_with_fallback(csv_path: str) -> Optional[pd.DataFrame]:
     """Read CSV with encoding fallback."""
@@ -290,25 +280,21 @@ def prepare_dataframe(df: pd.DataFrame) -> pd.DataFrame:
     else:
         df['LineItem Status'] = df['LineItem Status'].fillna('New').astype(str)
     
-    # Select and order columns - keep Technician Remarks as it is
     selected_columns = [
         'Case Number', 'SLA', 'Customer Name', 'Street',
         'Zip/Postal Code', 'Customer Complaint', 'Product Description',
         'LineItem Status', 'Technician Name'
     ]
     
-    # Add Technician Remarks if it exists (keep original column)
     if 'Technician Remarks' in df.columns:
         selected_columns.append('Technician Remarks')
         log("Keeping Technician Remarks column as it is", "success")
     
-    # Always add a new empty Remarks column (separate from Technician Remarks)
-    df['Remarks'] = ''  # Start with empty column
+    df['Remarks'] = ''
     selected_columns.append('Remarks')
     log("Added new empty Remarks column for VLOOKUP results", "success")
     
     return df[selected_columns]
-
 
 def save_to_excel(df: pd.DataFrame, excel_path: str) -> bool:
     """Save dataframe to Excel with formatting."""
@@ -331,7 +317,6 @@ def save_to_excel(df: pd.DataFrame, excel_path: str) -> bool:
         return False
 
 def apply_excel_styling(ws, df: pd.DataFrame) -> None:
-
     header_fill = PatternFill(start_color=BLUE_HEADER, end_color=BLUE_HEADER, fill_type="solid")
     header_font = Font(bold=True, color="FFFFFF")
     border = Border(
@@ -363,7 +348,6 @@ def apply_excel_styling(ws, df: pd.DataFrame) -> None:
     
     ws.auto_filter.ref = ws.dimensions
 
-
 def create_pivot_table(excel_path: str) -> None:
     """Create pivot table in the Excel file."""
     log("Attempting to create pivot table...", "step")
@@ -385,7 +369,7 @@ def create_pivot_table(excel_path: str) -> None:
         apply_default_sheet_settings(ws)
         
         last_row = ws.UsedRange.Rows.Count
-        data_range = ws.Range(f"A1:K{last_row}")  # Updated to K since we now have 11 columns
+        data_range = ws.Range(f"A1:K{last_row}")
         
         ws_pivot = wb.Sheets.Add()
         ws_pivot.Name = "Pivot_View"
@@ -517,45 +501,147 @@ def apply_default_sheet_settings(ws) -> None:
         except:
             pass
 
-
-def main() -> None:
-    """Main entry point for the script."""
-    print(Fore.GREEN + "\n===============================")
-    print(Fore.CYAN + "🚀 CSV Formatter with Excel VLOOKUP & Pivot Table")
-    print(Fore.GREEN + "===============================\n")
-    
-    try:
-        csv_path = select_csv_file()
-        if not csv_path:
-            log("No CSV file selected. Exiting...", "error")
-            return
+class CSVFormatterApp:
+    """Main application class for CSV Formatter GUI."""
+    def __init__(self, root: tk.Tk):
+        self.root = root
+        self.root.title("CSV Formatter with Excel VLOOKUP & Pivot Table")
+        self.root.geometry("600x400")
+        self.root.configure(bg="#f0f0f0")
         
-        output_folder = select_output_folder()
-        if not output_folder:
-            log("No output folder selected. Exiting...", "error")
+        self.csv_path = tk.StringVar(value="No CSV file selected")
+        self.output_folder = tk.StringVar(value="No output folder selected")
+        self.lookup_path = tk.StringVar(value="No lookup file selected")
+        self.do_vlookup = tk.BooleanVar(value=False)
+        
+        self.setup_ui()
+    
+    def setup_ui(self):
+        """Set up the GUI layout."""
+        main_frame = ttk.Frame(self.root, padding="10")
+        main_frame.pack(fill=tk.BOTH, expand=True)
+        
+        ttk.Label(
+            main_frame,
+            text="CSV Formatter",
+            font=("Arial", 16, "bold"),
+            foreground="#0070C0"
+        ).pack(pady=10)
+        
+        ttk.Label(main_frame, text="CSV File:").pack(anchor="w")
+        ttk.Label(main_frame, textvariable=self.csv_path, wraplength=500).pack(anchor="w")
+        ttk.Button(
+            main_frame,
+            text="Select CSV File",
+            command=self.select_csv
+        ).pack(fill=tk.X, pady=5)
+        
+        ttk.Label(main_frame, text="Output Folder:").pack(anchor="w")
+        ttk.Label(main_frame, textvariable=self.output_folder, wraplength=500).pack(anchor="w")
+        ttk.Button(
+            main_frame,
+            text="Select Output Folder",
+            command=self.select_output
+        ).pack(fill=tk.X, pady=5)
+        
+        ttk.Checkbutton(
+            main_frame,
+            text="Apply VLOOKUP",
+            variable=self.do_vlookup,
+            command=self.toggle_lookup
+        ).pack(anchor="w", pady=5)
+        
+        self.lookup_label = ttk.Label(main_frame, text="Lookup File:")
+        self.lookup_label.pack(anchor="w")
+        self.lookup_display = ttk.Label(main_frame, textvariable=self.lookup_path, wraplength=500)
+        self.lookup_display.pack(anchor="w")
+        self.lookup_button = ttk.Button(
+            main_frame,
+            text="Select Lookup File",
+            command=self.select_lookup,
+            state="disabled"
+        )
+        self.lookup_button.pack(fill=tk.X, pady=5)
+        
+        ttk.Button(
+            main_frame,
+            text="Process",
+            command=self.process,
+            style="Accent.TButton"
+        ).pack(fill=tk.X, pady=20)
+        
+        style = ttk.Style()
+        style.configure("Accent.TButton", font=("Arial", 12), foreground="#FFFFFF", background="#0070C0")
+        style.map("Accent.TButton", 
+                  background=[("active", "#005BB5")],
+                  foreground=[("active", "#FFFFFF")])
+    
+    def select_csv(self):
+        """Handle CSV file selection."""
+        path = select_csv_file()
+        if path:
+            self.csv_path.set(path)
+    
+    def select_output(self):
+        """Handle output folder selection."""
+        path = select_output_folder()
+        if path:
+            self.output_folder.set(path)
+    
+    def select_lookup(self):
+        """Handle lookup file selection."""
+        path = select_lookup_file()
+        if path:
+            self.lookup_path.set(path)
+    
+    def toggle_lookup(self):
+        """Toggle lookup file selection UI based on VLOOKUP checkbox."""
+        state = "normal" if self.do_vlookup.get() else "disabled"
+        self.lookup_button.configure(state=state)
+        self.lookup_path.set("No lookup file selected" if not self.do_vlookup.get() else self.lookup_path.get())
+    
+    def process(self):
+        """Process the CSV file."""
+        if self.csv_path.get() == "No CSV file selected":
+            messagebox.showerror("Error", "Please select a CSV file.")
+            return
+        if self.output_folder.get() == "No output folder selected":
+            messagebox.showerror("Error", "Please select an output folder.")
+            return
+        if self.do_vlookup.get() and self.lookup_path.get() == "No lookup file selected":
+            messagebox.showerror("Error", "Please select a lookup file for VLOOKUP.")
             return
         
         timestamp = datetime.now().strftime('%Y%m%d_%H%M%S')
         filename = f"Output_{timestamp}.xlsx"
-        excel_path = os.path.join(output_folder, filename)
+        excel_path = os.path.join(self.output_folder.get(), filename)
         
-        do_vlookup = input("Apply VLOOKUP? (Y/N): ").strip().lower() == 'y'
-        lookup_file = select_lookup_file() if do_vlookup else None
-        
-        if do_vlookup and not lookup_file:
-            log("No lookup file selected. Skipping VLOOKUP...", "warning")
-            do_vlookup = False
-        
-        if process_csv(csv_path, excel_path, do_vlookup, lookup_file):
-            try:
-                os.startfile(excel_path)
-                log("🎉 Processing complete! File opened.", "success")
-            except:
-                log("Processing complete! Unable to automatically open the file.", "success")
-    
-    except Exception as e:
-        log(f"Unexpected error: {str(e)}", "error")
-        sys.exit(1)
+        try:
+            if process_csv(
+                self.csv_path.get(),
+                excel_path,
+                self.do_vlookup.get(),
+                self.lookup_path.get() if self.do_vlookup.get() else None
+            ):
+                try:
+                    if os.name == 'nt':
+                        os.startfile(excel_path)
+                    else:
+                        subprocess.run(['open', excel_path] if os.name == 'posix' else ['xdg-open', excel_path])
+                    messagebox.showinfo("Success", f"Processing complete! File saved to {excel_path}")
+                except Exception as e:
+                    messagebox.showinfo("Success", f"Processing complete! File saved to {excel_path}\nUnable to open file automatically: {str(e)}")
+            else:
+                messagebox.showerror("Error", "Processing failed. Check the console for details.")
+        except Exception as e:
+            log(f"Unexpected error: {str(e)}", "error")
+            messagebox.showerror("Error", f"An unexpected error occurred: {str(e)}")
+
+def main() -> None:
+    """Main entry point for the script."""
+    root = tk.Tk()
+    app = CSVFormatterApp(root)
+    root.mainloop()
 
 if __name__ == "__main__":
     main()
